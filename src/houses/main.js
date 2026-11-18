@@ -7,9 +7,11 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import { toonGradient, createInkPipeline } from './ink.js';
 import { projects } from '../projects.js';
 import { marbleTexture, ashlarTexture, rockTexture, buildHouse, goddessStatue } from './temples.js';
-import { nebulaSky, cosmicDust, floatingIsland, stairway, debris } from './cosmos.js';
+import { nebulaSky, cosmicDust, floatingIsland, stairway, debris, CORE_DIR } from './cosmos.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Solo en dev: ?at=0..1 congela la inmersión en ese instante.
@@ -73,17 +75,28 @@ controls.maxPolarAngle = 1.62;
 controls.rotateSpeed = 0.45;
 controls.enabled = false;
 
+// objetos que no llevan contorno de tinta (cielo, partículas, sprites, relieves)
+const noInk = [];
+const pipeline = createInkPipeline({ renderer, scene, camera, coreDir: CORE_DIR, noInk });
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
+composer.addPass(pipeline.ink);
+composer.addPass(pipeline.rays);
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.65, 0.6, 0.92);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+const dpr = renderer.getPixelRatio();
+const smaa = new SMAAPass(window.innerWidth * dpr, window.innerHeight * dpr);
+composer.addPass(smaa);
 
 // ---------- Materiales ----------
+const gradient = toonGradient();
 const mats = {
-  marble: new THREE.MeshStandardMaterial({ map: marbleTexture(), roughness: 0.55, color: '#f2f0f8' }),
-  ashlar: new THREE.MeshStandardMaterial({ map: ashlarTexture(), roughness: 0.8, color: '#e6e4ef' }),
-  rock: new THREE.MeshStandardMaterial({ map: rockTexture(), roughness: 0.95, color: '#c9a882' }),
+  gradient,
+  marble: new THREE.MeshToonMaterial({ map: marbleTexture(), color: '#f4f2fa', gradientMap: gradient }),
+  ashlar: new THREE.MeshToonMaterial({ map: ashlarTexture(), color: '#e8e6f2', gradientMap: gradient }),
+  rock: new THREE.MeshToonMaterial({ map: rockTexture(), color: '#c9a882', gradientMap: gradient }),
+  gold: new THREE.MeshToonMaterial({ color: '#e7b85a', emissive: '#3a2200', gradientMap: gradient }),
 };
 
 const animated = [];
@@ -92,9 +105,11 @@ const animated = [];
 const sky = nebulaSky();
 scene.add(sky);
 animated.push(sky.material);
+noInk.push(sky);
 const dust = cosmicDust(reducedMotion ? 300 : 1000, 110);
 scene.add(dust);
 animated.push(dust.material);
+noInk.push(dust);
 
 scene.add(new THREE.HemisphereLight('#9a8cff', '#2a1640', 0.9));
 const moon = new THREE.DirectionalLight('#dfe4ff', 1.6);
@@ -108,23 +123,6 @@ scene.add(coreLight);
 const houses = [];
 const n = ordered.length;
 const islandPos = (i) => new THREE.Vector3(i % 2 === 0 ? -STEP_X : STEP_X, i * STEP_Y, -i * STEP_Z);
-
-function labelTexture(name, sub, color) {
-  const c = document.createElement('canvas');
-  c.width = 1024; c.height = 320;
-  const ctx = c.getContext('2d');
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.font = '700 120px Cinzel, Georgia, serif';
-  ctx.shadowColor = color; ctx.shadowBlur = 30;
-  ctx.fillStyle = color; ctx.fillText(name.toUpperCase(), 512, 120);
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = '#fff6e0'; ctx.fillText(name.toUpperCase(), 512, 120);
-  ctx.font = '400 54px Cinzel, Georgia, serif';
-  ctx.fillStyle = '#ffd77a'; ctx.fillText(sub, 512, 245);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
 
 function auraTexture() {
   const c = document.createElement('canvas');
@@ -148,17 +146,23 @@ function buildHouseOnPath({ project: p, house }, i) {
   t.group.rotation.y = Math.atan2(CAM_HOME.x - pos.x, CAM_HOME.z - pos.z) * 0.8;
   scene.add(t.group);
   animated.push(t.door.material);
+  t.group.traverse((o) => { if (o.userData.noInk) noInk.push(o); });
 
   const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex, color: p.color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.12 }));
   aura.scale.set(22, 18, 1);
   aura.position.copy(pos).add(new THREE.Vector3(0, t.height * 0.45, -3));
   scene.add(aura);
+  noInk.push(aura);
 
-  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(p.name, house.title, p.color), transparent: true, depthWrite: false, depthTest: false, opacity: 0.9 }));
-  label.renderOrder = 10;
-  label.scale.set(7.5, 2.35, 1);
-  label.position.copy(pos).add(new THREE.Vector3(0, t.height + 2.2, -1));
-  scene.add(label);
+  // etiqueta en HTML: nítida y sin que la tinta del postproceso la pise
+  const label = document.createElement('div');
+  label.className = 'house-label';
+  label.style.setProperty('--c', p.color);
+  label.innerHTML = `<strong></strong><span></span>`;
+  label.querySelector('strong').textContent = p.name;
+  label.querySelector('span').textContent = `${house.glyph}︎ ${house.title}`;
+  labelLayer.appendChild(label);
+  const labelAnchor = pos.clone().add(new THREE.Vector3(0, t.height + 1.6, -1));
 
   t.group.updateMatrixWorld(true);
   const door = t.door.getWorldPosition(new THREE.Vector3());
@@ -175,10 +179,25 @@ function buildHouseOnPath({ project: p, house }, i) {
   hit.userData.index = i;
   scene.add(hit);
 
-  return { project: p, house, temple: t, aura, label, light, hit, door, forward, hover: 0 };
+  return { project: p, house, temple: t, aura, label, labelAnchor, light, hit, door, forward, hover: 0 };
 }
 
 // ---------- UI ----------
+const labelLayer = document.createElement('div');
+labelLayer.className = 'label-layer';
+document.body.appendChild(labelLayer);
+const projected = new THREE.Vector3();
+function placeLabel(h) {
+  projected.copy(h.labelAnchor).project(camera);
+  const visible = projected.z < 1;
+  h.label.style.display = visible ? '' : 'none';
+  if (!visible) return;
+  const x = (projected.x * 0.5 + 0.5) * window.innerWidth;
+  const y = (-projected.y * 0.5 + 0.5) * window.innerHeight;
+  h.label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%) scale(${0.85 + h.hover * 0.2})`;
+  h.label.classList.toggle('active', h.hover > 0.5);
+}
+
 const card = document.getElementById('card');
 const cardName = document.getElementById('card-name');
 const cardTagline = document.getElementById('card-tagline');
@@ -320,11 +339,8 @@ function tick() {
     h.hover += (target - h.hover) * Math.min(1, dt * 8);
     h.temple.door.material.uniforms.uHover.value = h.hover;
     if (!entering || entering.h !== h) h.aura.material.opacity = 0.12 + h.hover * 0.35 + Math.sin(time * 1.3 + i) * 0.02;
-    h.label.material.opacity = 0.8 + h.hover * 0.2;
+    placeLabel(h);
     h.light.intensity = 14 + h.hover * 26;
-    // etiquetas con tamaño de pantalla constante
-    const w = camera.position.distanceTo(h.label.position) * 0.17;
-    h.label.scale.set(w, w * 0.313, 1);
   });
 
   if (intro) {
@@ -339,6 +355,7 @@ function tick() {
     controls.update();
   }
 
+  pipeline.beforeRender();
   composer.render();
   requestAnimationFrame(tick);
 }
@@ -350,6 +367,8 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+  pipeline.setSize();
+  smaa.setSize(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio());
   bloom.resolution.set(window.innerWidth, window.innerHeight);
 });
 
@@ -381,6 +400,7 @@ async function start() {
   halo.scale.set(16, 16, 1);
   halo.position.copy(summit).add(new THREE.Vector3(0, 6, -2));
   scene.add(halo);
+  noInk.push(halo);
 
   debrisMesh = debris(reducedMotion ? 80 : 240, new THREE.Box3(new THREE.Vector3(-34, -12, summit.z - 10), new THREE.Vector3(34, summit.y + 10, 18)), mats.rock);
   scene.add(debrisMesh);

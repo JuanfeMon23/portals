@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 
+export const CORE_DIR = new THREE.Vector3(-0.35, 0.45, -1).normalize();
+
 // Cielo de nebulosa con núcleo galáctico y estrellas, todo en un shader.
 export function nebulaSky(radius = 400) {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
-    uniforms: { uTime: { value: 0 }, uCore: { value: new THREE.Vector3(-0.35, 0.45, -1).normalize() } },
+    uniforms: { uTime: { value: 0 }, uCore: { value: CORE_DIR } },
     vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
     fragmentShader: /* glsl */ `
       uniform float uTime; uniform vec3 uCore; varying vec3 vDir;
