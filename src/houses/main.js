@@ -11,7 +11,8 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { toonGradient, createInkPipeline } from './ink.js';
 import { projects } from '../projects.js';
 import { marbleTexture, ashlarTexture, rockTexture, buildHouse, goddessStatue } from './temples.js';
-import { nebulaSky, cosmicDust, CORE_DIR } from './cosmos.js';
+import { nebulaSky, cosmicDust, constellations, CORE_DIR } from './cosmos.js';
+import { magicCircleTexture } from './nature.js';
 import { buildMountain } from './mountain.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -109,6 +110,10 @@ const dust = cosmicDust(reducedMotion ? 300 : 1000, 110);
 scene.add(dust);
 animated.push(dust.material);
 noInk.push(dust);
+const stars = constellations();
+scene.add(stars);
+noInk.push(stars);
+const circles = [];
 
 scene.add(new THREE.HemisphereLight('#9a8cff', '#2a1640', 0.9));
 const moon = new THREE.DirectionalLight('#dfe4ff', 1.6);
@@ -137,6 +142,12 @@ const auraTex = auraTexture();
 function buildHouseOnPath({ project: p, house }, i) {
   const pos = mountain.houses[i].center;
 
+  // círculo mágico en el suelo, frente a la casa
+  const circle = new THREE.Mesh(new THREE.CircleGeometry(3.6, 48), new THREE.MeshBasicMaterial({
+    map: magicCircleTexture(p.color), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+  }));
+  circle.rotation.x = -Math.PI / 2;
+
   const t = buildHouse(house.style, { mats, color: p.color, glyph: house.glyph });
   t.group.position.copy(pos);
   t.group.rotation.y = Math.atan2(CAM_HOME.x - pos.x, CAM_HOME.z - pos.z) * 0.8;
@@ -163,6 +174,12 @@ function buildHouseOnPath({ project: p, house }, i) {
   t.group.updateMatrixWorld(true);
   const door = t.door.getWorldPosition(new THREE.Vector3());
   const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(t.group.quaternion);
+  // el círculo va delante de la escalinata, apoyado en el terreno
+  circle.position.copy(door).addScaledVector(forward, 5.8);
+  circle.position.y = mountain.sampleHeight(circle.position.x, circle.position.z) + 0.2;
+  scene.add(circle);
+  noInk.push(circle);
+  circles.push(circle);
 
   const light = new THREE.PointLight(p.color, 14, 14, 2);
   light.position.copy(door).addScaledVector(forward, 4).add(new THREE.Vector3(0, 1, 0));
@@ -327,7 +344,11 @@ function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const time = clock.elapsedTime;
   for (const m of animated) m.uniforms.uTime.value = time;
-  if (mountain && !reducedMotion) mountain.update(time);
+  if (mountain) mountain.update(reducedMotion ? 0 : time, camera);
+  circles.forEach((c, i) => {
+    c.rotation.z = reducedMotion ? 0 : time * 0.15 * (i % 2 ? 1 : -1);
+    c.material.opacity = 0.45 + (houses[i] ? houses[i].hover * 0.45 : 0);
+  });
 
   houses.forEach((h, i) => {
     const target = i === hovered ? 1 : 0;

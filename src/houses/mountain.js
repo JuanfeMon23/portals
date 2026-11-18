@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { rockGeometry, cypressGeometry, oliveGeometry, bushGeometry, grassTuftGeometry, brokenColumnGeometry, drumGeometry, blockGeometry, mistMaterial } from './nature.js';
 
 // ---------- Ruido ----------
 function hash(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
@@ -42,13 +43,14 @@ function canvasTex(w, h, draw, repeat) {
 }
 function grainTexture() {
   return canvasTex(256, 256, (ctx, w, h) => {
-    ctx.fillStyle = '#d8d8d8'; ctx.fillRect(0, 0, w, h);
-    for (let i = 0; i < 9000; i++) {
-      const v = 150 + Math.random() * 105;
-      ctx.fillStyle = `rgb(${v},${v},${v})`;
-      ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2);
+    ctx.fillStyle = '#d0d0d0'; ctx.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2600; i++) {
+      const x = Math.random() * w, y = Math.random() * h, l = 3 + Math.random() * 6, v = Math.floor(140 + Math.random() * 115);
+      ctx.strokeStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random() - 0.5) * 3, y - l); ctx.stroke();
     }
-  }, [60, 60]);
+    for (let i = 0; i < 5000; i++) { const v = Math.floor(120 + Math.random() * 135); ctx.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1); }
+  }, [70, 70]);
 }
 function dirtTexture() {
   return canvasTex(128, 256, (ctx, w, h) => {
@@ -62,21 +64,6 @@ function dirtTexture() {
     ctx.fillRect(0, 0, 10, h); ctx.fillRect(w - 10, 0, 10, h);
   }, [1, 1]);
 }
-function mistTexture() {
-  const t = canvasTex(256, 256, (ctx, w, h) => {
-    ctx.clearRect(0, 0, w, h);
-    for (let i = 0; i < 26; i++) {
-      const x = w / 2 + (Math.random() - 0.5) * w * 0.55, y = h / 2 + (Math.random() - 0.5) * h * 0.3;
-      const r = 30 + Math.random() * 60;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, 'rgba(255,255,255,0.22)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    }
-  }, [1, 1]);
-  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-  return t;
-}
-
 // ---------- Construcción ----------
 // Devuelve el terreno, el sendero, los puntos de cada casa y la cima.
 export function buildMountain({ houseCount, mats, reduced }) {
@@ -161,13 +148,24 @@ export function buildMountain({ houseCount, mats, reduced }) {
   geo.computeVertexNormals();
   const nrm = geo.attributes.normal;
   const colors = new Float32Array(pos.count * 3);
-  const cGrass = new THREE.Color('#2f4a46'), cGrass2 = new THREE.Color('#3d5a3c'), cRock = new THREE.Color('#5d5873'), cRockHi = new THREE.Color('#8a87a6'), cDirt = new THREE.Color('#6e5238'), cStone = new THREE.Color('#8b8698');
+  const cGrass = new THREE.Color('#2f4a46'), cGrass2 = new THREE.Color('#3d5a3c'), cRock = new THREE.Color('#5d5873'), cRockHi = new THREE.Color('#8a87a6'), cDirt = new THREE.Color('#6e5238'), cStone = new THREE.Color('#8b8698'), cDry = new THREE.Color('#5d5a3e'), cStrata = new THREE.Color('#3e3a52');
   const col = new THREE.Color();
   for (let k = 0; k < pos.count; k++) {
     const x = pos.getX(k), z = pos.getZ(k), y = heights[k];
     const slope = 1 - nrm.getY(k);
     col.copy(cGrass).lerp(cGrass2, fbm(x * 0.05, z * 0.05));
+    col.lerp(cDry, smooth(0.55, 0.8, fbm(x * 0.03 + 9, z * 0.03)) * 0.6);
     col.lerp(cRock, smooth(0.12, 0.35, slope));
+    // estratos en la roca
+    col.lerp(cStrata, smooth(0.2, 0.45, slope) * (0.5 + 0.5 * Math.sin(y * 2.2 + fbm(x * 0.1, z * 0.1) * 5)) * 0.45);
+    // oclusión: los pliegues cóncavos más oscuros
+    const ix = k % (SX + 1), iz = Math.floor(k / (SX + 1));
+    let avg = 0, cnt = 0;
+    for (const [da, db] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) { const jx = ix + da, jz = iz + db; if (jx >= 0 && jx <= SX && jz >= 0 && jz <= SZ) { avg += heights[jz * (SX + 1) + jx]; cnt++; } }
+    const concave = cnt ? avg / cnt - y : 0;
+    col.multiplyScalar(1 - THREE.MathUtils.clamp(concave * 0.35, 0, 0.45));
+    // grano fino: manchas de pasto, tierra y musgo
+    col.multiplyScalar(0.86 + 0.28 * fbm(x * 0.35, z * 0.35, 3));
     col.lerp(cRockHi, smooth(30, 60, y) * 0.6);
     col.lerp(cDirt, 1 - smooth(1.6, 3.2, pathD[k]));
     for (const pl of plateaus) if (Math.hypot(x - pl.c.x, z - pl.c.z) < pl.r - 0.5) col.lerp(cStone, 0.8);
@@ -215,7 +213,7 @@ export function buildMountain({ houseCount, mats, reduced }) {
 
   // 4. Dispersión: árboles, rocas y ruinas fuera del sendero y de las terrazas
   const rand = (() => { let s = 12345; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); })();
-  function scatter(count, accept) {
+  function scatter(count, accept, minPath = 3.2) {
     const out = [];
     let tries = 0;
     while (out.length < count && tries < count * 40) {
@@ -223,7 +221,7 @@ export function buildMountain({ houseCount, mats, reduced }) {
       const x = (rand() - 0.5) * W * 0.9, z = Z0 + (rand() - 0.5) * D * 0.9;
       const y = sampleHeight(x, z);
       const pd = pathDist(x, z).d;
-      if (pd < 3.2) continue;
+      if (pd < minPath) continue;
       if (plateaus.some((pl) => Math.hypot(x - pl.c.x, z - pl.c.z) < pl.r + 1.5)) continue;
       const slope = Math.abs(sampleHeight(x + 1, z) - y) + Math.abs(sampleHeight(x, z + 1) - y);
       if (!accept({ x, y, z, slope, pd })) continue;
@@ -241,51 +239,57 @@ export function buildMountain({ houseCount, mats, reduced }) {
     });
     return inst;
   }
-  const leafMat = new THREE.MeshToonMaterial({ color: '#2a4a40', gradientMap: mats.gradient });
-  const leafMat2 = new THREE.MeshToonMaterial({ color: '#36533a', gradientMap: mats.gradient });
-  const trunkMat = new THREE.MeshToonMaterial({ color: '#3b2a20', gradientMap: mats.gradient });
-  const cypressTrunk = new THREE.CylinderGeometry(0.12, 0.16, 1, 6).translate(0, 0.5, 0);
-  const cypressCrown = new THREE.ConeGeometry(0.75, 5.5, 10, 3).translate(0, 3.6, 0);
-  const olive = new THREE.SphereGeometry(1.6, 12, 8).scale(1, 0.75, 1).translate(0, 2.2, 0);
-  const oliveTrunk = new THREE.CylinderGeometry(0.15, 0.22, 1.6, 6).translate(0, 0.8, 0);
-  const lowTrees = scatter(reduced ? 120 : 320, ({ y, slope }) => slope < 1.6 && y < 40);
-  const roundTrees = scatter(reduced ? 80 : 240, ({ y, slope }) => slope < 1.2 && y < 30);
-  const cs = () => 1.0 + rand() * 0.9, os = () => 0.8 + rand() * 0.7;
-  // misma escala para tronco y copa de cada árbol
-  const scaleFrom = (list, fn) => list.map(() => fn());
-  const cScales = scaleFrom(lowTrees, cs), oScales = scaleFrom(roundTrees, os);
-  const fromList = (list) => { let k = 0; return () => list[k++]; };
-  group.add(instanced(cypressCrown, leafMat, lowTrees, fromList(cScales)));
-  group.add(instanced(cypressTrunk, trunkMat, lowTrees, fromList(cScales)));
-  group.add(instanced(olive, leafMat2, roundTrees, fromList(oScales)));
-  group.add(instanced(oliveTrunk, trunkMat, roundTrees, fromList(oScales)));
-
-  const rockPts = scatter(reduced ? 80 : 220, ({ slope }) => slope > 0.6);
-  const stoneMat = new THREE.MeshToonMaterial({ color: '#6c6884', gradientMap: mats.gradient });
-  group.add(instanced(new THREE.DodecahedronGeometry(1, 0), stoneMat, rockPts.map((p) => p.clone().setY(p.y + 0.2)), () => 0.4 + rand() ** 2 * 2.2, 1));
-
-  // ruinas: columnas rotas y caídas junto al sendero
-  const ruinPts = [];
-  for (let i = 25; i < N - 25; i += 23) {
-    const p = pts[i], q = pts[i + 1];
-    const tx = q.x - p.x, tz = q.z - p.z, tl = Math.hypot(tx, tz) || 1;
-    const s = i % 2 ? 1 : -1;
-    const x = p.x - (tz / tl) * 3.6 * s, z = p.z + (tx / tl) * 3.6 * s;
-    if (plateaus.some((pl) => Math.hypot(x - pl.c.x, z - pl.c.z) < pl.r + 1)) continue;
-    ruinPts.push(new THREE.Vector3(x, sampleHeight(x, z), z));
-  }
-  const ruinGeo = new THREE.CylinderGeometry(0.32, 0.36, 1, 14).translate(0, 0.5, 0);
-  const ruins = new THREE.InstancedMesh(ruinGeo, mats.marble, ruinPts.length);
-  {
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3();
-    ruinPts.forEach((p, k) => {
-      const fallen = rand() < 0.35;
-      q.setFromEuler(e.set(fallen ? Math.PI / 2 : 0, rand() * Math.PI, 0));
-      const hgt = fallen ? 2 + rand() * 2 : 0.8 + rand() * 3;
-      ruins.setMatrixAt(k, m.compose(fallen ? p.clone().setY(p.y + 0.35) : p, q, s.set(1, hgt, 1)));
+  const natMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: mats.gradient });
+  const grassMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: mats.gradient, side: THREE.DoubleSide });
+  // reparte los puntos entre variantes y da a cada ejemplar un tono propio
+  function variants(geoms, points, scaleFn, { tilt = 0, sink = 0, mat = natMat, pose } = {}) {
+    const buckets = geoms.map(() => []);
+    points.forEach((pt) => buckets[Math.floor(rand() * geoms.length)].push(pt));
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc3 = new THREE.Vector3(), c = new THREE.Color();
+    buckets.forEach((list, gi) => {
+      if (!list.length) return;
+      const inst = new THREE.InstancedMesh(geoms[gi], mat, list.length);
+      list.forEach((pt, k) => {
+        const sc = scaleFn();
+        if (pose) pose(e); else e.set((rand() - 0.5) * tilt, rand() * Math.PI * 2, (rand() - 0.5) * tilt);
+        q.setFromEuler(e);
+        inst.setMatrixAt(k, m.compose(pt.clone().setY(pt.y - sink * sc), q, sc3.set(sc, sc * (0.85 + rand() * 0.35), sc)));
+        const br = 0.8 + rand() * 0.32;
+        c.setRGB(br * (0.94 + rand() * 0.12), br * (0.94 + rand() * 0.12), br * (0.94 + rand() * 0.12));
+        inst.setColorAt(k, c);
+      });
+      group.add(inst);
     });
   }
-  group.add(ruins);
+  const cypressPts = scatter(reduced ? 120 : 320, ({ y, slope }) => slope < 1.6 && y < 46);
+  const olivePts = scatter(reduced ? 70 : 200, ({ y, slope }) => slope < 1.2 && y < 32);
+  const bushPts = scatter(reduced ? 150 : 480, ({ slope }) => slope < 1.8, 2.4);
+  const grassPts = scatter(reduced ? 1200 : 5200, ({ y, slope }) => slope < 1.5 && y < 52, 1.7);
+  const rockPts = scatter(reduced ? 90 : 300, ({ slope }) => slope > 0.45, 2.5);
+  variants([0, 1, 2].map((k) => cypressGeometry(k + 1)), cypressPts, () => 0.9 + rand() * 0.8);
+  variants([0, 1, 2].map((k) => oliveGeometry(k + 1)), olivePts, () => 0.8 + rand() * 0.6);
+  variants([0, 1, 2].map((k) => bushGeometry(k + 1)), bushPts, () => 0.6 + rand() * 0.8);
+  variants([grassTuftGeometry()], grassPts, () => 1.6 + rand() * 1.8, { mat: grassMat });
+  variants([0, 1, 2, 3].map((k) => rockGeometry(k * 2.7 + 1)), rockPts, () => 0.35 + rand() ** 2 * 2.6, { tilt: 0.5, sink: 0.15 });
+
+  // ruinas: grupos con columnas rotas, tambores caídos y bloques de sillar
+  const colGeoms = [1.6, 2.6, 3.6, 4.6].map((h, k) => brokenColumnGeometry(k + 3, h));
+  const ruinCols = [], drums = [], blocks = [];
+  for (let i = 40; i < N - 30; i += 55) {
+    const p = pts[i], q2 = pts[i + 1];
+    const tx = q2.x - p.x, tz = q2.z - p.z, tl = Math.hypot(tx, tz) || 1;
+    const side = (i / 55) % 2 < 1 ? 1 : -1;
+    const cx = p.x - (tz / tl) * 6 * side, cz = p.z + (tx / tl) * 6 * side;
+    if (plateaus.some((pl) => Math.hypot(cx - pl.c.x, cz - pl.c.z) < pl.r + 3)) continue;
+    const at = (dx, dz) => new THREE.Vector3(cx + dx, sampleHeight(cx + dx, cz + dz), cz + dz);
+    const cols = 2 + Math.floor(rand() * 3);
+    for (let k = 0; k < cols; k++) ruinCols.push(at((k - cols / 2) * 1.6 * (tx / tl), (k - cols / 2) * 1.6 * (tz / tl)));
+    for (let k = 0; k < 2; k++) drums.push(at((rand() - 0.5) * 5, (rand() - 0.5) * 5).add(new THREE.Vector3(0, 0.3, 0)));
+    for (let k = 0; k < 5; k++) blocks.push(at((rand() - 0.5) * 6, (rand() - 0.5) * 6).add(new THREE.Vector3(0, 0.18, 0)));
+  }
+  variants(colGeoms, ruinCols, () => 1, { pose: (e) => e.set((rand() - 0.5) * 0.12, rand() * Math.PI, (rand() - 0.5) * 0.12) });
+  variants([drumGeometry(1), drumGeometry(2)], drums, () => 1, { pose: (e) => e.set(Math.PI / 2, rand() * Math.PI, 0) });
+  variants([blockGeometry(1), blockGeometry(2), blockGeometry(3)], blocks, () => 0.8 + rand() * 0.6, { tilt: 0.4 });
 
   // 5. Antorchas a lo largo del sendero
   const torchPts = [];
@@ -294,6 +298,7 @@ export function buildMountain({ houseCount, mats, reduced }) {
     const tx = q.x - p.x, tz = q.z - p.z, tl = Math.hypot(tx, tz) || 1;
     const s = (i / 14) % 2 < 1 ? 1 : -1;
     const x = p.x - (tz / tl) * 1.9 * s, z = p.z + (tx / tl) * 1.9 * s;
+    if (plateaus.some((pl) => Math.hypot(x - pl.c.x, z - pl.c.z) < pl.r + 2)) continue;
     torchPts.push(new THREE.Vector3(x, sampleHeight(x, z), z));
   }
   const postMat = new THREE.MeshToonMaterial({ color: '#2a2230', gradientMap: mats.gradient });
@@ -311,18 +316,17 @@ export function buildMountain({ houseCount, mats, reduced }) {
   const wisps = glowPoints(wispPts, { color: '#7fe3ff', size: 380, drift: 1 });
   group.add(wisps); animated.push(wisps.material); noInk.push(wisps);
 
-  const mistTex = mistTexture();
   const mists = [];
-  for (let k = 0; k < (reduced ? 10 : 26); k++) {
+  for (let k = 0; k < (reduced ? 8 : 18); k++) {
     const band = k % 3;
-    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: mistTex, color: band === 2 ? '#b9a6ff' : '#9fb4ff', transparent: true, depthWrite: false, opacity: 0.18 + rand() * 0.14, fog: false }));
-    const sc = 45 + rand() * 50;
-    m.scale.set(sc, sc * 0.45, 1);
-    const ang = rand() * Math.PI * 2, r = 25 + rand() * 50;
-    m.position.set(Math.cos(ang) * r, 4 + band * 16 + rand() * 6, ZC + 10 + Math.sin(ang) * r * 0.7);
-    m.userData.speed = (rand() - 0.5) * 0.6;
+    const mat = mistMaterial(band === 2 ? '#b9a6ff' : '#a8bcff', 0.32 + rand() * 0.2);
+    const sc = 50 + rand() * 60;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(sc, sc * 0.4), mat);
+    const ang = rand() * Math.PI * 2, r = 22 + rand() * 50;
+    m.position.set(Math.cos(ang) * r, 3 + band * 15 + rand() * 6, ZC + 12 + Math.sin(ang) * r * 0.7);
     m.userData.baseX = m.position.x;
-    group.add(m); mists.push(m); noInk.push(m);
+    m.userData.speed = (rand() - 0.5) * 0.6;
+    group.add(m); mists.push(m); noInk.push(m); animated.push(mat);
   }
 
   const beamMat = new THREE.ShaderMaterial({
@@ -351,11 +355,14 @@ export function buildMountain({ houseCount, mats, reduced }) {
   range.position.set(0, -6, -190);
   group.add(range);
 
-  function update(time) {
-    for (const m of mists) m.position.x = m.userData.baseX + Math.sin(time * 0.05 + m.userData.speed * 10) * 8;
+  function update(time, camera) {
+    for (const m of mists) {
+      m.position.x = m.userData.baseX + Math.sin(time * 0.05 + m.userData.speed * 10) * 8;
+      m.quaternion.copy(camera.quaternion);
+    }
   }
 
-  return { group, animated, noInk, houses, summit, sampleHeight, update };
+  return { group, animated, noInk, houses, summit, sampleHeight, update, pathPoints: pts };
 }
 
 // Puntos luminosos aditivos (llamas de antorcha, fuegos fatuos).

@@ -41,6 +41,33 @@ export function nebulaSky(radius = 400) {
   return sky;
 }
 
+// Constelaciones: cadenas de estrellas unidas por líneas tenues.
+export function constellations(count = 8, radius = 360) {
+  const g = new THREE.Group();
+  let s = 777;
+  const rand = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const lines = [], stars = [];
+  for (let c = 0; c < count; c++) {
+    const az = -1.1 + (c / (count - 1)) * 2.2 + (rand() - 0.5) * 0.2;
+    const el = 0.35 + rand() * 0.55;
+    let prev = null;
+    const nStars = 5 + Math.floor(rand() * 3);
+    for (let k = 0; k < nStars; k++) {
+      const a = az + (rand() - 0.5) * 0.28 + k * 0.03, e = el + (rand() - 0.5) * 0.22;
+      const v = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)).multiplyScalar(radius);
+      stars.push(v);
+      if (prev) lines.push(prev, v);
+      prev = v;
+    }
+  }
+  const lineGeo = new THREE.BufferGeometry().setFromPoints(lines);
+  g.add(new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: '#9fb6ff', transparent: true, opacity: 0.22, depthWrite: false, fog: false, blending: THREE.AdditiveBlending })));
+  const starGeo = new THREE.BufferGeometry().setFromPoints(stars);
+  g.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#e8eeff', size: 5, sizeAttenuation: false, transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending })));
+  g.frustumCulled = false;
+  return g;
+}
+
 // Polvo cósmico azulado que flota.
 export function cosmicDust(count = 900, spread = 90) {
   const geo = new THREE.BufferGeometry();
