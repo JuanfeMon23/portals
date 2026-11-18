@@ -7,6 +7,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { projects } from './projects.js';
 import { floorTexture, wallTexture, woodTexture, leatherTexture, boneTexture, bannerTexture, labelTexture } from './textures.js';
 import { fireParticles, embers, orbitSparks } from './shaders.js';
@@ -66,11 +67,15 @@ controls.maxPolarAngle = 1.5;
 controls.rotateSpeed = 0.5;
 controls.enabled = false;
 
-const composer = new EffectComposer(renderer);
+// render base con MSAA (el compositor no lo trae por defecto)
+const msaaTarget = new THREE.WebGLRenderTarget(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio(), { samples: 4, type: THREE.HalfFloatType });
+const composer = new EffectComposer(renderer, msaaTarget);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.75, 0.55, 0.82);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+const smaa = new SMAAPass(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio());
+composer.addPass(smaa);
 
 // ---------- Materiales ----------
 const stoneMat = new THREE.MeshStandardMaterial({ map: wallTexture(), roughness: 0.95, color: '#c9a58f' });
@@ -534,6 +539,7 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+  smaa.setSize(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio());
   bloom.resolution.set(window.innerWidth, window.innerHeight);
 });
 
