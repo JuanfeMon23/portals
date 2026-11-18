@@ -12,6 +12,8 @@ import { projects } from './projects.js';
 import { floorTexture, wallTexture, woodTexture, leatherTexture, boneTexture, bannerTexture, labelTexture } from './textures.js';
 import { fireParticles, embers, orbitSparks } from './shaders.js';
 import { portalSphereMaterial, haloMaterial, beamMaterial, flameMaterial } from './fx.js';
+import { createTransitionPass } from './transition.js';
+import { hallClutter, hallMist, createDepthPrepass, runeCircleTexture } from './hall-detail.js';
 import { ropeTexture, grateTexture, curtainTexture, emblemTexture, taperedTube, beamBetween, ropeColumn, spikedBrazier, channeler } from './props.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -71,6 +73,8 @@ controls.enabled = false;
 const msaaTarget = new THREE.WebGLRenderTarget(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio(), { samples: 4, type: THREE.HalfFloatType });
 const composer = new EffectComposer(renderer, msaaTarget);
 composer.addPass(new RenderPass(scene, camera));
+const transition = createTransitionPass();
+composer.addPass(transition);
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.75, 0.55, 0.82);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -344,7 +348,7 @@ const cardName = document.getElementById('card-name');
 const cardTagline = document.getElementById('card-tagline');
 const cardStack = document.getElementById('card-stack');
 const menu = document.getElementById('menu');
-const veil = document.getElementById('veil');
+const crossing = document.getElementById('crossing');
 const loader = document.getElementById('loader');
 
 let hovered = -1;
@@ -432,7 +436,11 @@ function enter(i) {
   controls.enabled = false;
   document.body.classList.add('entering');
   document.body.classList.remove('hovering');
-  veil.style.setProperty('--accent', pt.project.color);
+  transition.uniforms.uColor.value.set(pt.project.color);
+  transition.uniforms.tCircle.value = runeCircleTexture(pt.project.color);
+  crossing.style.setProperty('--c', pt.project.color);
+  crossing.querySelector('strong').textContent = pt.project.name;
+  crossing.querySelector('span').textContent = 'Cruzando el portal';
 }
 
 function updateEntering(dt) {
@@ -440,9 +448,10 @@ function updateEntering(dt) {
   e.t = dbgAt ?? Math.min(1, e.t + dt / e.duration);
   const t = e.t;
   const u = e.pt.sphere.material.uniforms;
-  if (reducedMotion) {
-    veil.style.opacity = String(t);
-  } else {
+  // la pantalla de cruce sube con la inmersión y se queda animada mientras carga el proyecto
+  transition.uniforms.uProgress.value = reducedMotion ? Math.min(1, t * 1.2) : t;
+  crossing.classList.toggle('show', t > 0.62);
+  if (!reducedMotion) {
     const a = clamp01(t / 0.42), b = clamp01((t - 0.42) / 0.58);
     if (t < 0.42) {
       const k = easeInOut(a);
@@ -463,9 +472,8 @@ function updateEntering(dt) {
     u.uBoost.value = 1.6 * easeIn(t);
     e.pt.halo.material.uniforms.uBoost.value = 2 * easeIn(t);
     e.pt.sparks.material.uniforms.uSpeed.value = 1 + 8 * t;
-    bloom.strength = 0.75 + 2.2 * easeIn(b);
-    renderer.toneMappingExposure = 1.1 + 0.8 * easeIn(b);
-    veil.style.opacity = String(clamp01((t - 0.62) / 0.3));
+    bloom.strength = 0.75 + 0.7 * easeIn(b);
+    renderer.toneMappingExposure = 1.1 + 0.15 * easeIn(b);
   }
   if (t >= 1 && !e.done && dbgAt === null) {
     e.done = true;
@@ -528,6 +536,19 @@ function tick() {
     controls.update();
   }
 
+  transition.uniforms.uTime.value = time;
+  transition.uniforms.uAspect.value = window.innerWidth / window.innerHeight;
+  if (mist) {
+    mist.update(reducedMotion ? 0 : time, camera);
+    prepass.render();
+    for (const m of mist.materials) {
+      m.uniforms.uTime.value = reducedMotion ? 0 : time;
+      m.uniforms.tDepth.value = prepass.depth();
+      m.uniforms.uRes.value.copy(prepass.size());
+      m.uniforms.uNear.value = camera.near;
+      m.uniforms.uFar.value = camera.far;
+    }
+  }
   composer.render();
   requestAnimationFrame(tick);
 }
@@ -541,9 +562,13 @@ window.addEventListener('resize', () => {
   composer.setSize(window.innerWidth, window.innerHeight);
   smaa.setSize(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio());
   bloom.resolution.set(window.innerWidth, window.innerHeight);
+  prepass.setSize();
 });
 
 // ---------- Arranque ----------
+let mist = null;
+const depthHidden = [];
+const prepass = createDepthPrepass(renderer, scene, camera, depthHidden);
 async function start() {
   // Etiquetas y emblemas se dibujan en canvas: esperar a la fuente.
   try { await Promise.race([document.fonts.load('700 120px Cinzel'), new Promise((r) => setTimeout(r, 1500))]); } catch { /* fuente opcional */ }
@@ -559,6 +584,19 @@ async function start() {
   }
   addBrazier(new THREE.Vector3(-12, 0, 5), true, 1.2);
   addBrazier(new THREE.Vector3(12, 0, 5), true, 1.2);
+
+  // detalle: escombros, barriles, cajas, huesos; y humo con fundido suave
+  const avoid = [
+    ...portals.map((pt) => ({ x: pt.group.position.x, z: pt.group.position.z, r: 7 })),
+    { x: 0, z: 0, r: 7.8 },
+    ...Array.from({ length: RIBS }, (_, i) => ({ x: Math.cos((i / RIBS) * Math.PI * 2) * (HALL_R - 1), z: Math.sin((i / RIBS) * Math.PI * 2) * (HALL_R - 1), r: 1.8 })),
+    { x: -12, z: 5, r: 1.6 }, { x: 12, z: 5, r: 1.6 },
+  ];
+  scene.add(hallClutter({ hallRadius: HALL_R, avoid, reduced: reducedMotion }));
+  mist = hallMist({ hallRadius: HALL_R, reduced: reducedMotion });
+  scene.add(mist.group);
+  // el prepase de profundidad ignora todo lo transparente (neblina, partículas, halos, llamas)
+  scene.traverse((o) => { if (o.material && o.material.transparent) depthHidden.push(o); });
   buildMenu();
   camera.lookAt(controls.target);
   intro.from.copy(camera.position);

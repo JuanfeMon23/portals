@@ -56,3 +56,49 @@ body.entering .title, body.entering .menu, body.entering .card { opacity: 0; poi
   .menu button { padding: 6px 10px; font-size: .68rem; }
   .card { bottom: auto; top: 90px; }
 }
+
+/* ---------- Pantalla de carga inicial: brasas y sello rúnico ---------- */
+.loader {
+  display: flex; flex-direction: column; gap: 34px; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 60%, #5a1a08 0%, #240a04 40%, #0b0402 100%);
+  overflow: hidden;
+}
+.loader::before, .loader::after { content: ''; position: absolute; inset: -20%; pointer-events: none; }
+.loader::before {
+  background-image:
+    radial-gradient(2px 2px at 12% 80%, #ffb35a, transparent), radial-gradient(1.5px 1.5px at 33% 60%, #ff8a3a, transparent),
+    radial-gradient(2px 2px at 58% 90%, #ffd27a, transparent), radial-gradient(1.5px 1.5px at 81% 70%, #ff7a2a, transparent),
+    radial-gradient(1px 1px at 22% 40%, #ffb35a, transparent), radial-gradient(2px 2px at 69% 50%, #ff9a4a, transparent),
+    radial-gradient(1.5px 1.5px at 90% 20%, #ffc47a, transparent), radial-gradient(1px 1px at 46% 30%, #ff8a3a, transparent);
+  background-size: 300px 300px;
+  animation: embers-rise 9s linear infinite, twinkle 1.6s ease-in-out infinite;
+}
+.loader::after {
+  background: radial-gradient(closest-side at 50% 85%, rgba(255, 110, 30, .35), transparent),
+              radial-gradient(closest-side at 30% 30%, rgba(120, 30, 10, .3), transparent);
+  filter: blur(30px);
+  animation: nebula 6s ease-in-out infinite alternate;
+}
+.sigil { position: relative; width: 230px; height: 230px; z-index: 1; }
+.sigil .ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(255, 160, 80, .6); box-shadow: 0 0 18px rgba(255, 120, 40, .35), inset 0 0 18px rgba(255, 120, 40, .2); }
+.sigil .r1 { animation: spin 18s linear infinite; border-style: dashed; }
+.sigil .r2 { inset: 22px; animation: spin 12s linear infinite reverse; }
+.sigil .r3 { inset: 62px; border-color: rgba(255, 210, 120, .7); animation: spin 8s linear infinite; }
+.sigil .runes { position: absolute; inset: 0; fill: none; stroke: #ffb35a; stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 4px #ff7a2a); animation: spin 40s linear infinite reverse; }
+.sigil .core { position: absolute; inset: 95px; border-radius: 50%; background: radial-gradient(circle, #fff3d0 0%, #ff8a3a 40%, transparent 72%); animation: pulse 1.4s ease-in-out infinite; }
+.loader p { position: relative; z-index: 1; letter-spacing: .4em; animation: pulse 2s ease-in-out infinite; }
+
+/* ---------- Texto de la pantalla de cruce ---------- */
+.crossing {
+  position: fixed; left: 50%; top: 80%; transform: translate(-50%, 10px); display: flex; flex-direction: column; align-items: center; gap: 8px;
+  pointer-events: none; opacity: 0; transition: opacity .8s ease, transform .8s ease; z-index: 5; text-align: center;
+}
+.crossing.show { opacity: 1; transform: translate(-50%, 0); }
+.crossing strong { font-size: clamp(1.6rem, 4vw, 3rem); letter-spacing: .18em; text-transform: uppercase; color: #fff8e8; text-shadow: 0 0 18px var(--c), 0 0 46px var(--c); }
+.crossing span { font-size: clamp(.7rem, 1.2vw, .9rem); letter-spacing: .35em; text-transform: uppercase; color: #ffd77a; text-shadow: 0 2px 6px #000; }
+.crossing.show span { animation: pulse 2s ease-in-out infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes embers-rise { to { transform: translate(40px, -300px); } }
+@keyframes twinkle { 50% { opacity: .5; } }
+@keyframes nebula { to { transform: scale(1.2); } }
