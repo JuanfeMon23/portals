@@ -11,7 +11,8 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { toonGradient, createInkPipeline } from './ink.js';
 import { projects } from '../projects.js';
 import { marbleTexture, ashlarTexture, rockTexture, buildHouse, goddessStatue } from './temples.js';
-import { nebulaSky, cosmicDust, floatingIsland, stairway, debris, CORE_DIR } from './cosmos.js';
+import { nebulaSky, cosmicDust, CORE_DIR } from './cosmos.js';
+import { buildMountain } from './mountain.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Solo en dev: ?at=0..1 congela la inmersión en ese instante.
@@ -32,18 +33,14 @@ const ordered = [...projects]
   .map((p) => ({ project: p, house: HOUSES[p.id] ?? fallbackHouse }))
   .sort((a, b) => a.house.order - b.house.order);
 
-const STEP_X = 14;
-const STEP_Y = 6;
-const STEP_Z = 8;
-const ISLAND_R = 9;
-const CAM_HOME = new THREE.Vector3(0, 16, 52);
-const TARGET_HOME = new THREE.Vector3(0, 17, -20);
-let baseFov = 55;
+const CAM_HOME = new THREE.Vector3(0, 30, 104);
+const TARGET_HOME = new THREE.Vector3(0, 36, -10);
+let baseFov = 50;
 
 function fitCamera() {
   const aspect = window.innerWidth / window.innerHeight;
-  CAM_HOME.z = Math.min(80, 52 + Math.max(0, 1.6 - aspect) * 22);
-  baseFov = 55 + Math.max(0, 1.2 - aspect) * 30;
+  CAM_HOME.z = Math.min(140, 104 + Math.max(0, 1.6 - aspect) * 30);
+  baseFov = 50 + Math.max(0, 1.2 - aspect) * 30;
 }
 fitCamera();
 
@@ -56,7 +53,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2('#0c0820', 0.006);
+scene.fog = new THREE.FogExp2('#1a2150', 0.0055);
 
 const camera = new THREE.PerspectiveCamera(baseFov, window.innerWidth / window.innerHeight, 0.1, 900);
 camera.position.set(0, 40, 75);
@@ -66,8 +63,8 @@ controls.target.copy(TARGET_HOME);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 controls.enablePan = false;
-controls.minDistance = 25;
-controls.maxDistance = 120;
+controls.minDistance = 30;
+controls.maxDistance = 150;
 controls.minAzimuthAngle = -0.6;
 controls.maxAzimuthAngle = 0.6;
 controls.minPolarAngle = 1.05;
@@ -124,7 +121,7 @@ scene.add(coreLight);
 // ---------- Camino de las casas ----------
 const houses = [];
 const n = ordered.length;
-const islandPos = (i) => new THREE.Vector3(i % 2 === 0 ? -STEP_X : STEP_X, i * STEP_Y, -i * STEP_Z);
+let mountain = null;
 
 function auraTexture() {
   const c = document.createElement('canvas');
@@ -138,13 +135,10 @@ function auraTexture() {
 const auraTex = auraTexture();
 
 function buildHouseOnPath({ project: p, house }, i) {
-  const pos = islandPos(i);
-  const island = floatingIsland(ISLAND_R, 10 + (i % 3) * 2, mats);
-  island.position.copy(pos);
-  scene.add(island);
+  const pos = mountain.houses[i].center;
 
   const t = buildHouse(house.style, { mats, color: p.color, glyph: house.glyph });
-  t.group.position.copy(pos).add(new THREE.Vector3(0, 0, -1));
+  t.group.position.copy(pos);
   t.group.rotation.y = Math.atan2(CAM_HOME.x - pos.x, CAM_HOME.z - pos.z) * 0.8;
   scene.add(t.group);
   animated.push(t.door.material);
@@ -328,13 +322,12 @@ window.addEventListener('pageshow', (ev) => { if (ev.persisted) window.location.
 
 // ---------- Bucle ----------
 const clock = new THREE.Clock();
-let debrisMesh = null;
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const time = clock.elapsedTime;
   for (const m of animated) m.uniforms.uTime.value = time;
-  if (debrisMesh && !reducedMotion) debrisMesh.rotation.y = Math.sin(time * 0.05) * 0.04;
+  if (mountain && !reducedMotion) mountain.update(time);
 
   houses.forEach((h, i) => {
     const target = i === hovered ? 1 : 0;
@@ -377,35 +370,31 @@ window.addEventListener('resize', () => {
 // ---------- Arranque ----------
 async function start() {
   try { await Promise.race([document.fonts.load('700 120px Cinzel'), new Promise((r) => setTimeout(r, 1500))]); } catch { /* fuente opcional */ }
+  // una sola montaña con el sendero que sube por las casas
+  mountain = buildMountain({ houseCount: n, mats, reduced: reducedMotion });
+  scene.add(mountain.group);
+  animated.push(...mountain.animated);
+  noInk.push(...mountain.noInk);
   ordered.forEach((entry, i) => houses.push(buildHouseOnPath(entry, i)));
 
-  // escaleras entre islas
-  for (let i = 0; i < n - 1; i++) {
-    const a = islandPos(i), b = islandPos(i + 1);
-    const dir = new THREE.Vector3(b.x - a.x, 0, b.z - a.z).normalize();
-    scene.add(stairway(a.clone().addScaledVector(dir, ISLAND_R - 1.2), b.clone().addScaledVector(dir, -(ISLAND_R - 1.2)), 3, mats));
-  }
-
-  // cima con la estatua de la diosa
-  const last = islandPos(n - 1);
-  const summit = new THREE.Vector3(0, last.y + STEP_Y + 2, last.z - STEP_Z - 3);
-  const sIsland = floatingIsland(ISLAND_R * 0.9, 14, mats);
-  sIsland.position.copy(summit);
-  scene.add(sIsland);
+  // cima: templo de la diosa y su estatua delante
+  const summit = mountain.summit;
+  const face = Math.atan2(CAM_HOME.x - summit.x, CAM_HOME.z - summit.z);
+  const shrine = buildHouse('default', { mats, color: '#ffd77a', glyph: '✦' });
+  shrine.group.position.copy(summit).add(new THREE.Vector3(0, 0, -4));
+  shrine.group.rotation.y = face;
+  scene.add(shrine.group);
+  animated.push(shrine.door.material);
+  shrine.group.traverse((o) => { if (o.userData.noInk) noInk.push(o); });
   const statue = goddessStatue(mats);
-  statue.position.copy(summit);
-  statue.rotation.y = Math.atan2(CAM_HOME.x - summit.x, CAM_HOME.z - summit.z);
+  statue.position.copy(summit).add(new THREE.Vector3(0, 0, 4.5));
+  statue.rotation.y = face;
   scene.add(statue);
-  const dir = new THREE.Vector3(summit.x - last.x, 0, summit.z - last.z).normalize();
-  scene.add(stairway(last.clone().addScaledVector(dir, ISLAND_R - 1.2), summit.clone().addScaledVector(dir, -(ISLAND_R * 0.9 - 1.2)), 3, mats));
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex, color: '#ffd77a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.35 }));
-  halo.scale.set(16, 16, 1);
-  halo.position.copy(summit).add(new THREE.Vector3(0, 6, -2));
+  halo.scale.set(22, 22, 1);
+  halo.position.copy(summit).add(new THREE.Vector3(0, 7, 2));
   scene.add(halo);
   noInk.push(halo);
-
-  debrisMesh = debris(reducedMotion ? 80 : 240, new THREE.Box3(new THREE.Vector3(-34, -12, summit.z - 10), new THREE.Vector3(34, summit.y + 10, 18)), mats.rock);
-  scene.add(debrisMesh);
 
   buildMenu();
   camera.lookAt(controls.target);
