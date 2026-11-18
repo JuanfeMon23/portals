@@ -44,14 +44,20 @@ const InkShader = {
         aE += abs(ni.a - n0.a);
         aMax = max(aMax, ni.a);
       }
-      float edge = max(max(smoothstep(0.03, 0.09, dE/d0), smoothstep(0.5, 1.1, nE)), step(0.5, aE));
-      edge *= aMax;
+      // de lejos solo quedan las siluetas, más finas; las líneas interiores (estrías, dentículos) se desvanecen
+      float farF = smoothstep(25.0, 110.0, d0);
+      float edgeD = smoothstep(0.03, 0.09, dE/d0)*(1.0 - farF*0.7);
+      float edgeN = smoothstep(0.5, 1.1, nE)*(1.0 - smoothstep(18.0, 55.0, d0));
+      float edgeS = smoothstep(0.25, 1.0, aE)*0.85;
+      float edge = max(max(edgeD, edgeN), edgeS);
+      edge *= aMax*mix(1.0, 0.5, farF);
       // tramado diagonal en zonas oscuras (solo sobre geometría)
       float lum = dot(col.rgb, vec3(0.299, 0.587, 0.114));
       vec2 sp = gl_FragCoord.xy;
       float l1 = 1.0 - smoothstep(0.4, 1.2, abs(mod(sp.x + sp.y, 6.0) - 3.0));
       float l2 = 1.0 - smoothstep(0.4, 1.2, abs(mod(sp.x - sp.y, 6.0) - 3.0));
       float hatch = (l1*(1.0 - smoothstep(0.06, 0.16, lum)) + l2*(1.0 - smoothstep(0.02, 0.07, lum)))*n0.a*uHatch;
+      hatch *= 1.0 - smoothstep(20.0, 50.0, d0);
       col.rgb = mix(col.rgb, uInk, clamp(hatch*0.55, 0.0, 1.0));
       col.rgb = mix(col.rgb, uInk, edge*0.92);
       gl_FragColor = col;

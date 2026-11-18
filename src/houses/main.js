@@ -78,7 +78,9 @@ controls.enabled = false;
 // objetos que no llevan contorno de tinta (cielo, partículas, sprites, relieves)
 const noInk = [];
 const pipeline = createInkPipeline({ renderer, scene, camera, coreDir: CORE_DIR, noInk });
-const composer = new EffectComposer(renderer);
+// render base con MSAA (el compositor no lo trae por defecto)
+const msaaTarget = new THREE.WebGLRenderTarget(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio(), { samples: 4, type: THREE.HalfFloatType });
+const composer = new EffectComposer(renderer, msaaTarget);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(pipeline.ink);
 composer.addPass(pipeline.rays);
