@@ -1,6 +1,8 @@
 # Portales
 
-Landing 3D del portafolio: una sala con un portal por proyecto.
+Landing 3D del portafolio. En esta rama, el santuario de las casas del zodiaco: cada proyecto custodia una casa y su puerta es el portal.
+
+La asignación proyecto → casa vive en `HOUSES`, dentro de `src/houses/main.js`.
 
 ## Ejecutar
 
