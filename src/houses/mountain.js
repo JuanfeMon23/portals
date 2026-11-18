@@ -358,11 +358,12 @@ export function buildMountain({ houseCount, mats, reduced }) {
   function update(time, camera) {
     for (const m of mists) {
       m.position.x = m.userData.baseX + Math.sin(time * 0.05 + m.userData.speed * 10) * 8;
-      m.quaternion.copy(camera.quaternion);
+      // giro solo sobre el eje vertical: la neblina no se inclina con la cámara
+      m.rotation.set(0, Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z), 0);
     }
   }
 
-  return { group, animated, noInk, houses, summit, sampleHeight, update, pathPoints: pts };
+  return { group, animated, noInk, houses, summit, sampleHeight, update, pathPoints: pts, mistMaterials: mists.map((m) => m.material) };
 }
 
 // Puntos luminosos aditivos (llamas de antorcha, fuegos fatuos).

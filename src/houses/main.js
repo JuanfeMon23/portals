@@ -9,6 +9,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { toonGradient, createInkPipeline } from './ink.js';
+import { createTransitionPass } from './transition.js';
 import { projects } from '../projects.js';
 import { marbleTexture, ashlarTexture, rockTexture, buildHouse, goddessStatue } from './temples.js';
 import { nebulaSky, cosmicDust, constellations, CORE_DIR } from './cosmos.js';
@@ -44,6 +45,9 @@ function fitCamera() {
   baseFov = 50 + Math.max(0, 1.2 - aspect) * 30;
 }
 fitCamera();
+// Solo en dev: ?cam=x,y,z coloca la cámara en otro punto (para revisar la escena desde otros ángulos).
+const dbgCam = import.meta.env.DEV && new URLSearchParams(window.location.search).get('cam');
+if (dbgCam) CAM_HOME.fromArray(dbgCam.split(',').map(Number));
 
 // ---------- Render ----------
 const canvas = document.getElementById('scene');
@@ -82,6 +86,8 @@ const composer = new EffectComposer(renderer, msaaTarget);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(pipeline.ink);
 composer.addPass(pipeline.rays);
+const transition = createTransitionPass();
+composer.addPass(transition);
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.65, 0.6, 0.92);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -216,7 +222,7 @@ const cardName = document.getElementById('card-name');
 const cardTagline = document.getElementById('card-tagline');
 const cardStack = document.getElementById('card-stack');
 const menu = document.getElementById('menu');
-const veil = document.getElementById('veil');
+const crossing = document.getElementById('crossing');
 const loader = document.getElementById('loader');
 
 let hovered = -1;
@@ -299,7 +305,11 @@ function enter(i) {
   controls.enabled = false;
   document.body.classList.add('entering');
   document.body.classList.remove('hovering');
-  veil.style.setProperty('--accent', h.project.color);
+  transition.uniforms.uColor.value.set(h.project.color);
+  transition.uniforms.tCircle.value = magicCircleTexture(h.project.color);
+  crossing.style.setProperty('--c', h.project.color);
+  crossing.querySelector('strong').textContent = h.project.name;
+  crossing.querySelector('span').textContent = `${h.house.glyph}\uFE0E Cruzando a la ${h.house.title}`;
 }
 
 function updateEntering(dt) {
@@ -307,9 +317,10 @@ function updateEntering(dt) {
   e.t = dbgAt ?? Math.min(1, e.t + dt / e.duration);
   const t = e.t;
   const u = e.h.temple.door.material.uniforms;
-  if (reducedMotion) {
-    veil.style.opacity = String(t);
-  } else {
+  // la pantalla de cruce sube con la inmersión y se queda animada mientras carga el proyecto
+  transition.uniforms.uProgress.value = reducedMotion ? Math.min(1, t * 1.2) : t;
+  crossing.classList.toggle('show', t > 0.62);
+  if (!reducedMotion) {
     const a = clamp01(t / 0.5), b = clamp01((t - 0.5) / 0.5);
     if (t < 0.5) {
       const k = easeInOut(a);
@@ -325,9 +336,8 @@ function updateEntering(dt) {
     camera.lookAt(controls.target);
     u.uBoost.value = 2 * easeIn(t);
     e.h.aura.material.opacity = 0.12 + 0.6 * easeIn(t);
-    bloom.strength = 0.7 + 2.0 * easeIn(b);
-    renderer.toneMappingExposure = 1.1 + 0.8 * easeIn(b);
-    veil.style.opacity = String(clamp01((t - 0.7) / 0.25));
+    bloom.strength = 0.65 + 0.7 * easeIn(b);
+    renderer.toneMappingExposure = 1.1 + 0.15 * easeIn(b);
   }
   if (t >= 1 && !e.done && dbgAt === null) {
     e.done = true;
@@ -372,6 +382,17 @@ function tick() {
   }
 
   pipeline.beforeRender();
+  transition.uniforms.uTime.value = time;
+  transition.uniforms.uAspect.value = window.innerWidth / window.innerHeight;
+  if (mountain) {
+    const depth = pipeline.depth(), size = pipeline.size();
+    for (const m of mountain.mistMaterials) {
+      m.uniforms.tDepth.value = depth;
+      m.uniforms.uRes.value.copy(size);
+      m.uniforms.uNear.value = camera.near;
+      m.uniforms.uFar.value = camera.far;
+    }
+  }
   composer.render();
   requestAnimationFrame(tick);
 }

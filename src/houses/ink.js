@@ -161,5 +161,5 @@ export function createInkPipeline({ renderer, scene, camera, coreDir, noInk }) {
     bind();
   }
 
-  return { ink, rays, beforeRender, setSize };
+  return { ink, rays, beforeRender, setSize, depth: () => target.depthTexture, size: () => size };
 }

@@ -222,23 +222,44 @@ export function magicCircleTexture(color) {
   return t;
 }
 
-// Neblina animada: plano con ruido que se desplaza, siempre mirando a la cámara.
+// Neblina: el ruido vive en coordenadas de mundo (no se pega a la pantalla al girar la cámara)
+// y se funde suavemente donde toca el terreno, usando la profundidad del pase de tinta.
 export function mistMaterial(color, opacity) {
   return new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(color) }, uOpacity: { value: opacity }, uSeed: { value: Math.random() * 50 } },
-    vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    uniforms: {
+      uTime: { value: 0 }, uColor: { value: new THREE.Color(color) }, uOpacity: { value: opacity }, uSeed: { value: Math.random() * 50 },
+      tDepth: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uNear: { value: 0.1 }, uFar: { value: 900 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv; varying vec3 vWorld; varying float vViewZ;
+      void main(){
+        vUv = uv;
+        vec4 w = modelMatrix*vec4(position, 1.0);
+        vWorld = w.xyz;
+        vec4 mv = viewMatrix*w;
+        vViewZ = -mv.z;
+        gl_Position = projectionMatrix*mv;
+      }
+    `,
     fragmentShader: /* glsl */ `
-      uniform float uTime, uOpacity, uSeed; uniform vec3 uColor; varying vec2 vUv;
+      uniform float uTime, uOpacity, uSeed, uNear, uFar; uniform vec3 uColor; uniform sampler2D tDepth; uniform vec2 uRes;
+      varying vec2 vUv; varying vec3 vWorld; varying float vViewZ;
       float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
       float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
         return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y); }
       float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.02; a*=0.5; } return v; }
+      float lin(float d){ float z = d*2.0 - 1.0; return (2.0*uNear*uFar)/(uFar + uNear - z*(uFar - uNear)); }
       void main(){
-        vec2 p = vUv*vec2(3.0, 1.2) + vec2(uSeed + uTime*0.012, uTime*0.004);
-        float n = fbm(p + fbm(p*1.7 + uTime*0.01));
-        float edge = smoothstep(0.0, 0.3, vUv.x)*smoothstep(1.0, 0.7, vUv.x)*smoothstep(0.0, 0.35, vUv.y)*smoothstep(1.0, 0.55, vUv.y);
+        vec2 wp = vec2(vWorld.x + vWorld.z*0.6, vWorld.y*1.8)*0.035 + vec2(uSeed + uTime*0.015, uTime*0.004);
+        float n = fbm(wp + fbm(wp*1.7 + uTime*0.01));
+        float edge = smoothstep(0.0, 0.3, vUv.x)*smoothstep(1.0, 0.7, vUv.x)*smoothstep(0.0, 0.4, vUv.y)*smoothstep(1.0, 0.55, vUv.y);
         float a = smoothstep(0.35, 0.8, n)*edge*uOpacity;
+        // fundido suave donde la neblina atraviesa el terreno o los templos
+        float scene = lin(texture2D(tDepth, gl_FragCoord.xy/uRes).x);
+        a *= smoothstep(0.0, 8.0, scene - vViewZ);
+        // se desvanece si la cámara está muy cerca o dentro
+        a *= smoothstep(6.0, 22.0, vViewZ);
         gl_FragColor = vec4(uColor, a);
       }
     `,
