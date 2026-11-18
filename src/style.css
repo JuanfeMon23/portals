@@ -1,0 +1,58 @@
+:root {
+  --gold: #e8c27a;
+  --gold-dim: #a5824a;
+  --ink: #f4e6cc;
+  --panel: rgba(26, 12, 6, 0.78);
+  --border: rgba(232, 194, 122, 0.45);
+  --accent: #ff3b2f;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: #0d0604; color: var(--ink); font-family: 'Cinzel', Georgia, serif; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+body.hovering #scene { cursor: pointer; }
+
+.title { position: fixed; top: 24px; left: 28px; pointer-events: none; text-shadow: 0 2px 12px #000, 0 0 30px rgba(255, 90, 20, 0.35); transition: opacity .6s; }
+.title h1 { font-size: clamp(1.4rem, 3.2vw, 2.4rem); font-weight: 700; letter-spacing: .08em; color: var(--gold); }
+.title p { margin-top: 4px; font-size: .85rem; letter-spacing: .3em; text-transform: uppercase; color: var(--gold-dim); }
+
+.menu { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; transition: opacity .6s; }
+.menu button {
+  font: inherit; font-size: .8rem; letter-spacing: .15em; text-transform: uppercase; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--border); border-bottom: 3px solid var(--c, var(--gold));
+  padding: 8px 14px; cursor: pointer; backdrop-filter: blur(4px);
+  transition: transform .2s, background .2s, box-shadow .2s;
+}
+.menu button:hover, .menu button:focus-visible, .menu button.active {
+  transform: translateY(-4px); background: rgba(60, 22, 10, .9); outline: none;
+  box-shadow: 0 0 18px -4px var(--c, var(--gold));
+}
+
+.card {
+  position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); width: min(460px, calc(100vw - 32px));
+  background: var(--panel); border: 1px solid var(--border); border-top: 3px solid var(--accent);
+  padding: 16px 22px 14px; text-align: center; backdrop-filter: blur(6px);
+  box-shadow: 0 10px 40px rgba(0,0,0,.6), 0 0 40px -10px var(--accent);
+  animation: rise .25s ease-out;
+}
+.card[hidden] { display: none; }
+.card h2 { font-size: 1.5rem; letter-spacing: .12em; color: var(--accent); text-shadow: 0 0 16px var(--accent); }
+.card p { margin-top: 6px; font-family: Georgia, serif; font-size: .95rem; color: var(--ink); }
+.card ul { list-style: none; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.card li { font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; padding: 3px 8px; border: 1px solid var(--border); color: var(--gold); }
+.card .hint { display: block; margin-top: 10px; font-size: .7rem; letter-spacing: .35em; text-transform: uppercase; color: var(--gold-dim); animation: pulse 1.6s ease-in-out infinite; }
+
+.veil { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(circle at center, #fff 0%, var(--accent) 45%, #000 100%); }
+.loader { position: fixed; inset: 0; display: grid; place-items: center; background: #0d0604; color: var(--gold); letter-spacing: .3em; font-size: .9rem; text-transform: uppercase; transition: opacity 1s; z-index: 10; }
+.loader.done { opacity: 0; pointer-events: none; }
+
+body.entering .title, body.entering .menu, body.entering .card { opacity: 0; pointer-events: none; transition: opacity .4s; }
+
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes pulse { 50% { opacity: .45; } }
+
+@media (max-width: 700px) {
+  .title { top: 16px; left: 16px; }
+  .menu { bottom: 12px; gap: 6px; }
+  .menu button { padding: 6px 10px; font-size: .68rem; }
+  .card { bottom: auto; top: 90px; }
+}
